@@ -1,0 +1,25 @@
+# Dependencies
+*.jks
+*.keystore
+
+# Build outputs
+build/
+app/build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# APK
+*.apk
+
+# Local config
+local.properties
