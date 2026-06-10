@@ -44,13 +44,47 @@ fun rememberImagePicker(onImagePicked: (Bitmap) -> Unit): ImagePicker {
 }
 
 /**
- * Load bitmap from URI
+ * Load bitmap from URI with size limiting to prevent OOM
+ * Max dimension: 2048px (sufficient for watermarking)
  */
 fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? {
     return try {
-        val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-        BitmapFactory.decodeStream(inputStream)
+        val contentResolver = context.contentResolver
+
+        // First decode bounds only
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, options)
+        }
+
+        val maxDimension = 2048
+        val scale = calculateInSampleSize(options, maxDimension, maxDimension)
+
+        // Decode with scaling
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = scale
+        }
+        contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, decodeOptions)
+        }
     } catch (_: Exception) {
         null
     }
+}
+
+private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+    val (height: Int, width: Int) = options.outHeight to options.outWidth
+    var inSampleSize = 1
+
+    if (height > reqHeight || width > reqWidth) {
+        val halfHeight = height / 2
+        val halfWidth = width / 2
+
+        while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+            inSampleSize *= 2
+        }
+    }
+    return inSampleSize
 }

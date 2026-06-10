@@ -9,9 +9,11 @@ import com.everett.blindwatermark.data.algorithm.WatermarkEngine
 import com.everett.blindwatermark.utils.ImageSaver
 import com.everett.blindwatermark.utils.loadBitmapFromUri
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -56,7 +58,11 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
 
             try {
                 val password = currentState.password.takeIf { it.isNotBlank() } ?: ""
-                val watermarked = WatermarkEngine.embed(bitmap, text, password)
+
+                // Move heavy computation to background thread
+                val watermarked = withContext(Dispatchers.Default) {
+                    WatermarkEngine.embed(bitmap, text, password)
+                }
 
                 val fileName = "yinyin_embedded_${System.currentTimeMillis()}.png"
                 val saved = ImageSaver.saveToGallery(context, watermarked, fileName)
