@@ -22,14 +22,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Generate Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.2
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
-      - name: List APK files
-        run: ls -laR app/build/outputs/
+      - name: List build outputs
+        run: ls -laR app/build/outputs/ 2>/dev/null || echo "No outputs directory"
 
       - name: Sleep for verification
         run: sleep 30
@@ -40,7 +44,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           echo "Tag: $TAG"
-          APK_PATH=$(find app/build/outputs -name "*.apk" -type f | head -1)
+          APK_PATH=$(find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -1)
           echo "APK: $APK_PATH"
           if [ -n "$APK_PATH" ]; then
             gh release create "$TAG" "$APK_PATH" --title "Release $TAG" --generate-notes
