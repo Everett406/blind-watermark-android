@@ -1,4 +1,4 @@
-name: Build Release APK
+name: Build and Release APK
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,40 +28,13 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: app/build/outputs/apk/release/*.apk
-          retention-days: 1
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Sleep for build verification
+      - name: Sleep for verification
         run: sleep 30
-
-      - name: Download APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-release
-          path: ./apk/
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: List downloaded files
-        run: ls -la ./apk/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ./apk/*.apk
+          files: app/build/outputs/apk/release/*.apk
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
