@@ -29,13 +29,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/*.apk
 
   release:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Sleep for build verification
         run: sleep 30
 
@@ -43,9 +46,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: app-release
+          path: ./apk/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: app-release.apk
+          files: ./apk/*.apk
           generate_release_notes: true
