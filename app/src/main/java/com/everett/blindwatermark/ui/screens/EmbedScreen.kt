@@ -112,6 +112,31 @@ fun EmbedScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        // Compress toggle
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "加载时压缩图片",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = uiState.compressImage,
+                onCheckedChange = viewModel::onCompressChanged
+            )
+        }
+        Text(
+            text = if (uiState.compressImage) "开启：限制最大1024px，省内存" else "关闭：原图加载，更精确",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.secondary
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Password (collapsible)
         var showPassword by remember { mutableStateOf(false) }
         Row(

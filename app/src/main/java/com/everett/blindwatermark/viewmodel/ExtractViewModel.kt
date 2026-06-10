@@ -24,7 +24,8 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
 
     fun onImageSelected(uri: Uri, context: Context) {
         viewModelScope.launch {
-            val bitmap = loadBitmapFromUri(context, uri)
+            val compress = _uiState.value.compressImage
+            val bitmap = loadBitmapFromUri(context, uri, compress)
             bitmap?.let {
                 _uiState.value = _uiState.value.copy(
                     selectedImageUri = uri,
@@ -37,6 +38,10 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
                 )
             }
         }
+    }
+
+    fun onCompressChanged(compress: Boolean) {
+        _uiState.value = _uiState.value.copy(compressImage = compress)
     }
 
     fun onPasswordChanged(password: String) {
@@ -94,6 +99,7 @@ data class ExtractUiState(
     val selectedImageUri: Uri? = null,
     val selectedBitmap: Bitmap? = null,
     val password: String = "",
+    val compressImage: Boolean = true,
     val isProcessing: Boolean = false,
     val extractedText: String? = null,
     val isSuccess: Boolean = false,

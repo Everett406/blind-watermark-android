@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import java.io.InputStream
 
 /**
  * Image picker helper for Compose
@@ -45,10 +44,11 @@ fun rememberImagePicker(onImagePicked: (Bitmap) -> Unit): ImagePicker {
 }
 
 /**
- * Load bitmap from URI with size limiting to prevent OOM
- * Max dimension: 1024px (sufficient for watermarking, prevents OOM)
+ * Load bitmap from URI
+ * @param compress If true, limit max dimension to 1024px to prevent OOM
+ *                 If false, load at original resolution
  */
-fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? {
+fun loadBitmapFromUri(context: Context, uri: Uri, compress: Boolean = true): Bitmap? {
     return try {
         val contentResolver = context.contentResolver
 
@@ -60,17 +60,26 @@ fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? {
             BitmapFactory.decodeStream(stream, null, options)
         }
 
-        val maxDimension = 1024
-        val scale = calculateInSampleSize(options, maxDimension, maxDimension)
+        if (compress) {
+            val maxDimension = 1024
+            val scale = calculateInSampleSize(options, maxDimension, maxDimension)
 
-        // Decode with scaling
-        val decodeOptions = BitmapFactory.Options().apply {
-            inSampleSize = scale
-            // Prefer RGB_565 to save memory (no alpha needed for watermarking)
-            inPreferredConfig = Bitmap.Config.RGB_565
-        }
-        contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, decodeOptions)
+            // Decode with scaling
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = scale
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            }
+        } else {
+            // Load at original resolution
+            val decodeOptions = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            }
         }
     } catch (e: Throwable) {
         Log.e("ImagePicker", "加载图片失败", e)
@@ -87,8 +96,6 @@ private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int,
         val halfHeight = height / 2
         val halfWidth = width / 2
 
-        // Calculate the largest inSampleSize value that is a power of 2 and keeps
-        // both height and width larger than the requested height and width.
         while (halfHeight / inSampleSize >= reqHeight || halfWidth / inSampleSize >= reqWidth) {
             inSampleSize *= 2
         }

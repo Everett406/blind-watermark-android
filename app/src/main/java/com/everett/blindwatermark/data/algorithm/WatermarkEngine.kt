@@ -36,14 +36,18 @@ object WatermarkEngine {
             }
         }
 
-        // Pad to even dimensions for DWT
-        val paddedWidth = if (width % 2 == 0) width else width + 1
-        val paddedHeight = if (height % 2 == 0) height else height + 1
+        // Pad dimensions so that after DWT, LL sub-band is divisible by BLOCK_SIZE
+        // DWT halves dimensions, so we need: padded / 2 % BLOCK_SIZE == 0
+        // => padded % (2 * BLOCK_SIZE) == 0
+        val targetMultiple = 2 * BLOCK_SIZE // 16
+        val paddedWidth = ((width + targetMultiple - 1) / targetMultiple) * targetMultiple
+        val paddedHeight = ((height + targetMultiple - 1) / targetMultiple) * targetMultiple
         val padded = Array(paddedHeight) { i ->
             DoubleArray(paddedWidth) { j ->
                 if (i < height && j < width) yChannel[i][j] else 0.0
             }
         }
+        Log.d("WatermarkEngine", "原尺寸: ${width}x$height, 补齐后: ${paddedWidth}x$paddedHeight")
 
         // 1-level Haar DWT
         val waveletResult = HaarWavelet.transform(padded)
@@ -71,13 +75,16 @@ object WatermarkEngine {
 
         val (yChannel, width, height) = bitmapToYChannel(watermarked)
 
-        val paddedWidth = if (width % 2 == 0) width else width + 1
-        val paddedHeight = if (height % 2 == 0) height else height + 1
+        // Pad dimensions so that after DWT, LL sub-band is divisible by BLOCK_SIZE
+        val targetMultiple = 2 * BLOCK_SIZE // 16
+        val paddedWidth = ((width + targetMultiple - 1) / targetMultiple) * targetMultiple
+        val paddedHeight = ((height + targetMultiple - 1) / targetMultiple) * targetMultiple
         val padded = Array(paddedHeight) { i ->
             DoubleArray(paddedWidth) { j ->
                 if (i < height && j < width) yChannel[i][j] else 0.0
             }
         }
+        Log.d("WatermarkEngine", "原尺寸: ${width}x$height, 补齐后: ${paddedWidth}x$paddedHeight")
 
         val waveletResult = HaarWavelet.transform(padded)
         val ll = waveletResult.ll

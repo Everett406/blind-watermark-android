@@ -25,7 +25,8 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
 
     fun onImageSelected(uri: Uri, context: Context) {
         viewModelScope.launch {
-            val bitmap = loadBitmapFromUri(context, uri)
+            val compress = _uiState.value.compressImage
+            val bitmap = loadBitmapFromUri(context, uri, compress)
             bitmap?.let {
                 _uiState.value = _uiState.value.copy(
                     selectedImageUri = uri,
@@ -38,6 +39,10 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
                 )
             }
         }
+    }
+
+    fun onCompressChanged(compress: Boolean) {
+        _uiState.value = _uiState.value.copy(compressImage = compress)
     }
 
     fun onWatermarkTextChanged(text: String) {
@@ -124,6 +129,7 @@ data class EmbedUiState(
     val selectedBitmap: Bitmap? = null,
     val watermarkText: String = "",
     val password: String = "",
+    val compressImage: Boolean = true,
     val isProcessing: Boolean = false,
     val resultBitmap: Bitmap? = null,
     val isSuccess: Boolean = false,
