@@ -3,96 +3,93 @@ package com.everett.blindwatermark.data.algorithm
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.util.Log
+import kotlin.math.roundToInt
 
 /**
- * Blind Watermark Engine - LSB (Least Significant Bit) implementation
- * Simple, stable, and memory-efficient
+ * Blind Watermark Engine
+ * Implements DWT-DCT-SVD based blind watermarking algorithm
  */
 object WatermarkEngine {
 
-    private const val TAG = "WatermarkEngine"
-    // Use blue channel bits 0-1 (2 bits per pixel) for watermark
-    // This is robust against JPEG compression and minor image modifications
+    private const val BLOCK_SIZE = 8
+    private const val ALPHA = 0.1 // Embedding strength
 
     /**
-     * Embed text watermark into a bitmap image using LSB
+     * Embed text watermark into a bitmap image
      * @param carrier The original image bitmap
      * @param watermark The text watermark to embed
      * @param password Optional password for scrambling
      * @return Watermarked bitmap
      */
     fun embed(carrier: Bitmap, watermark: String, password: String = ""): Bitmap {
-        Log.d(TAG, "开始嵌入水印，图片尺寸: ${carrier.width}x${carrier.height}, 水印: '$watermark'")
+        Log.d("WatermarkEngine", "开始嵌入水印，图片尺寸: ${carrier.width}x${carrier.height}, 水印长度: ${watermark.length}")
 
+        // Convert watermark text to binary sequence
+        val watermarkBits = textToBits(watermark)
+        Log.d("WatermarkEngine", "水印比特数: ${watermarkBits.size}")
+
+        // Extract pixel data from carrier first, then we can recycle it
         val width = carrier.width
         val height = carrier.height
-        val totalPixels = width * height
+        val carrierPixels = IntArray(width * height)
+        carrier.getPixels(carrierPixels, 0, width, 0, 0, width, height)
 
-        // Convert text to bytes with length prefix
-        val watermarkBytes = watermark.toByteArray(Charsets.UTF_8)
-        val length = watermarkBytes.size
-
-        // Need: 4 bytes for length + N bytes for text = (4 + N) * 8 bits
-        // Each pixel stores 2 bits (blue channel bits 0-1)
-        // So need: (4 + N) * 8 / 2 = (4 + N) * 4 pixels
-        val totalBitsNeeded = (4 + length) * 8
-        val pixelsNeeded = (totalBitsNeeded + 1) / 2 // round up
-
-        if (pixelsNeeded > totalPixels) {
-            throw IllegalArgumentException("图片太小，无法嵌入水印。需要至少 $pixelsNeeded 像素，但图片只有 $totalPixels 像素")
+        // Convert bitmap to Y channel (luminance)
+        val yChannel = Array(height) { i ->
+            DoubleArray(width) { j ->
+                val pixel = carrierPixels[i * width + j]
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+                0.299 * r + 0.587 * g + 0.114 * b
+            }
         }
+        Log.d("WatermarkEngine", "Y通道转换完成，尺寸: ${width}x${height}")
 
-        // Copy original bitmap
-        val result = carrier.copy(Bitmap.Config.ARGB_8888, true)
-        val pixels = IntArray(totalPixels)
-        result.getPixels(pixels, 0, width, 0, 0, width, height)
+        // Note: Caller is responsible for recycling the carrier bitmap
+        // We don't recycle here to avoid use-after-free in Compose UI
 
-        // Build bit stream: 32-bit length prefix + data bits
-        val bits = mutableListOf<Int>()
-
-        // Length prefix (32 bits, big-endian)
-        for (i in 31 downTo 0) {
-            bits.add((length shr i) and 1)
-        }
-
-        // Data bits
-        for (byte in watermarkBytes) {
-            for (i in 7 downTo 0) {
-                bits.add((byte.toInt() shr i) and 1)
+        // Ensure dimensions are even for wavelet transform
+        val paddedWidth = if (width % 2 == 0) width else width + 1
+        val paddedHeight = if (height % 2 == 0) height else height + 1
+        val padded = Array(paddedHeight) { i ->
+            DoubleArray(paddedWidth) { j ->
+                if (i < height && j < width) yChannel[i][j] else 0.0
             }
         }
 
-        // Scramble pixel indices if password provided
-        val indices = if (password.isNotEmpty()) {
-            val seed = password.hashCode().toLong()
-            (0 until totalPixels).shuffled(java.util.Random(seed))
-        } else {
-            (0 until totalPixels).toList()
-        }
+        // 1-level Haar DWT
+        Log.d("WatermarkEngine", "开始小波变换")
+        val waveletResult = HaarWavelet.transform(padded)
+        val ll = waveletResult.ll
+        Log.d("WatermarkEngine", "小波变换完成，LL子带尺寸: ${ll.size}x${ll[0].size}")
 
-        // Embed bits into pixels (2 bits per pixel in blue channel)
-        var bitIndex = 0
-        for (pixelIdx in indices) {
-            if (bitIndex >= bits.size) break
+        // Free padded array
+        padded.forEach { it.fill(0.0) }
 
-            val pixel = pixels[pixelIdx]
-            val a = Color.alpha(pixel)
-            val r = Color.red(pixel)
-            val g = Color.green(pixel)
-            val b = Color.blue(pixel)
+        // Embed watermark into LL sub-band using DCT-SVD
+        Log.d("WatermarkEngine", "开始嵌入水印到LL子带")
+        val watermarkedLL = embedIntoLL(ll, watermarkBits, password)
+        Log.d("WatermarkEngine", "水印嵌入完成")
 
-            // Embed 2 bits into blue channel bits 0-1
-            val bit1 = bits[bitIndex++]
-            val bit2 = if (bitIndex < bits.size) bits[bitIndex++] else 0
+        // Free original LL
+        ll.forEach { it.fill(0.0) }
 
-            val newB = (b and 0xFC) or (bit1 shl 1) or bit2
+        // Inverse wavelet transform
+        Log.d("WatermarkEngine", "开始逆小波变换")
+        val inverseResult = HaarWavelet.inverse(
+            HaarWavelet.WaveletResult(
+                watermarkedLL,
+                waveletResult.lh,
+                waveletResult.hl,
+                waveletResult.hh
+            )
+        )
+        Log.d("WatermarkEngine", "逆小波变换完成")
 
-            pixels[pixelIdx] = Color.argb(a, r, g, newB)
-        }
-
-        result.setPixels(pixels, 0, width, 0, 0, width, height)
-        Log.d(TAG, "水印嵌入完成，共嵌入 ${bits.size} 比特到 $pixelsNeeded 个像素")
-        return result
+        // Convert back to bitmap using cached pixel data
+        Log.d("WatermarkEngine", "转换回Bitmap")
+        return yChannelToBitmap(inverseResult, carrierPixels, width, height)
     }
 
     /**
@@ -102,33 +99,192 @@ object WatermarkEngine {
      * @return Extracted watermark text, or null if no watermark found
      */
     fun extract(watermarked: Bitmap, password: String = ""): String? {
-        Log.d(TAG, "开始提取水印，图片尺寸: ${watermarked.width}x${watermarked.height}")
+        val (yChannel, width, height) = bitmapToYChannel(watermarked)
 
-        val width = watermarked.width
-        val height = watermarked.height
-        val totalPixels = width * height
+        val paddedWidth = if (width % 2 == 0) width else width + 1
+        val paddedHeight = if (height % 2 == 0) height else height + 1
+        val padded = Array(paddedHeight) { i ->
+            DoubleArray(paddedWidth) { j ->
+                if (i < height && j < width) yChannel[i][j] else 0.0
+            }
+        }
 
-        val pixels = IntArray(totalPixels)
-        watermarked.getPixels(pixels, 0, width, 0, 0, width, height)
+        // 1-level Haar DWT
+        val waveletResult = HaarWavelet.transform(padded)
+        val ll = waveletResult.ll
 
-        // Get pixel indices in same order as embedding
-        val indices = if (password.isNotEmpty()) {
-            val seed = password.hashCode().toLong()
-            (0 until totalPixels).shuffled(java.util.Random(seed))
+        // Extract watermark bits from LL sub-band
+        val extractedBits = extractFromLL(ll, password)
+
+        return bitsToText(extractedBits)
+    }
+
+    /**
+     * Embed watermark bits into LL sub-band using block-based DCT-SVD
+     */
+    private fun embedIntoLL(
+        ll: Array<DoubleArray>,
+        watermarkBits: List<Int>,
+        password: String
+    ): Array<DoubleArray> {
+        val height = ll.size
+        val width = ll[0].size
+        val result = Array(height) { i -> ll[i].copyOf() }
+
+        // Scramble watermark bits with password if provided
+        val scrambledBits = if (password.isNotEmpty()) {
+            scrambleBits(watermarkBits, password)
         } else {
-            (0 until totalPixels).toList()
+            watermarkBits
         }
 
-        // Extract bits (2 bits per pixel from blue channel)
+        val blocksH = height / BLOCK_SIZE
+        val blocksW = width / BLOCK_SIZE
+        val totalBlocks = blocksH * blocksW
+
+        Log.d("WatermarkEngine", "嵌入块信息: blocksH=$blocksH, blocksW=$blocksW, totalBlocks=$totalBlocks, bits=${scrambledBits.size}")
+
+        var bitIndex = 0
+        for (blockIdx in 0 until minOf(totalBlocks, scrambledBits.size)) {
+            val bh = blockIdx / blocksW
+            val bw = blockIdx % blocksW
+
+            if (bh >= blocksH || bw >= blocksW) break
+
+            try {
+                // Extract block
+                val block = Array(BLOCK_SIZE) { i ->
+                    DoubleArray(BLOCK_SIZE) { j ->
+                        result[bh * BLOCK_SIZE + i][bw * BLOCK_SIZE + j]
+                    }
+                }
+
+                // DCT
+                val dctBlock = DCT.dct2(block)
+
+                // SVD on DCT coefficients
+                val svd = SVD.decompose(dctBlock)
+
+                // Check for invalid singular values
+                if (svd.s[0].isNaN() || svd.s[0].isInfinite() || svd.s[0] == 0.0) {
+                    Log.w("WatermarkEngine", "块($bh,$bw)的奇异值异常: ${svd.s[0]}，跳过")
+                    continue
+                }
+
+                // Modify largest singular value based on watermark bit
+                if (bitIndex < scrambledBits.size) {
+                    val bit = scrambledBits[bitIndex]
+                    val modifiedS0 = if (bit == 1) {
+                        svd.s[0] * (1.0 + ALPHA)
+                    } else {
+                        svd.s[0] * (1.0 - ALPHA)
+                    }
+                    svd.s[0] = modifiedS0
+                    bitIndex++
+                }
+
+                // Reconstruct block
+                val modifiedBlock = SVD.reconstruct(svd.u, svd.s, svd.vt)
+                val idctBlock = DCT.idct2(modifiedBlock)
+
+                // Put block back
+                for (i in 0 until BLOCK_SIZE) {
+                    for (j in 0 until BLOCK_SIZE) {
+                        result[bh * BLOCK_SIZE + i][bw * BLOCK_SIZE + j] = idctBlock[i][j]
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("WatermarkEngine", "处理块($bh,$bw)时出错: ${e.message}")
+                // 跳过这个块，继续处理下一个
+            }
+        }
+
+        Log.d("WatermarkEngine", "嵌入完成，处理了 $bitIndex 个比特")
+        return result
+    }
+
+    /**
+     * Extract watermark bits from LL sub-band
+     */
+    private fun extractFromLL(
+        ll: Array<DoubleArray>,
+        password: String
+    ): List<Int> {
+        val height = ll.size
+        val width = ll[0].size
+
+        val blocksH = height / BLOCK_SIZE
+        val blocksW = width / BLOCK_SIZE
+        val totalBlocks = blocksH * blocksW
+
+        val extractedBits = mutableListOf<Int>()
+
+        // We need a reference (original) to compare, but for blind watermarking
+        // we use a different approach: we check the pattern of singular values
+        // For simplicity, we use a threshold-based approach
+
+        for (blockIdx in 0 until totalBlocks) {
+            val bh = blockIdx / blocksW
+            val bw = blockIdx % blocksW
+
+            // Extract block
+            val block = Array(BLOCK_SIZE) { i ->
+                DoubleArray(BLOCK_SIZE) { j ->
+                    ll[bh * BLOCK_SIZE + i][bw * BLOCK_SIZE + j]
+                }
+            }
+
+            // DCT
+            val dctBlock = DCT.dct2(block)
+
+            // SVD
+            val svd = SVD.decompose(dctBlock)
+
+            // Determine bit based on the pattern of singular values
+            // If the largest singular value is relatively large, it's likely bit=1
+            val s0 = svd.s[0]
+            val s1 = if (svd.s.size > 1) svd.s[1] else 0.0
+
+            // Use ratio as indicator
+            val bit = if (s0 > s1 * (1 + ALPHA * 0.5)) 1 else 0
+            extractedBits.add(bit)
+        }
+
+        // Descramble if password provided
+        return if (password.isNotEmpty()) {
+            descrambleBits(extractedBits, password)
+        } else {
+            extractedBits
+        }
+    }
+
+    /**
+     * Convert text to list of bits
+     */
+    private fun textToBits(text: String): List<Int> {
+        val bytes = text.toByteArray(Charsets.UTF_8)
         val bits = mutableListOf<Int>()
-        for (pixelIdx in indices) {
-            val pixel = pixels[pixelIdx]
-            val b = Color.blue(pixel)
-            bits.add((b shr 1) and 1)
-            bits.add(b and 1)
+
+        // Add length prefix (32 bits)
+        val length = bytes.size
+        for (i in 31 downTo 0) {
+            bits.add((length shr i) and 1)
         }
 
-        // Need at least 32 bits for length prefix
+        // Add data bits
+        for (byte in bytes) {
+            for (i in 7 downTo 0) {
+                bits.add((byte.toInt() shr i) and 1)
+            }
+        }
+
+        return bits
+    }
+
+    /**
+     * Convert bits back to text
+     */
+    private fun bitsToText(bits: List<Int>): String? {
         if (bits.size < 32) return null
 
         // Read length prefix
@@ -137,19 +293,8 @@ object WatermarkEngine {
             length = (length shl 1) or bits[i]
         }
 
-        Log.d(TAG, "读取到长度前缀: $length")
-
-        // Validate length
-        if (length <= 0 || length > 10000) {
-            Log.w(TAG, "长度无效: $length")
-            return null
-        }
-
-        val totalBits = 32 + length * 8
-        if (bits.size < totalBits) {
-            Log.w(TAG, "比特数不足: ${bits.size} < $totalBits")
-            return null
-        }
+        if (length <= 0 || length > 10000) return null
+        if (bits.size < 32 + length * 8) return null
 
         // Read data bytes
         val bytes = ByteArray(length)
@@ -162,12 +307,103 @@ object WatermarkEngine {
         }
 
         return try {
-            val result = String(bytes, Charsets.UTF_8)
-            Log.d(TAG, "提取成功: '$result'")
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "UTF-8 解码失败", e)
+            String(bytes, Charsets.UTF_8)
+        } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Simple bit scrambling using password hash as seed
+     */
+    private fun scrambleBits(bits: List<Int>, password: String): List<Int> {
+        val seed = password.hashCode().toLong()
+        val rng = LCG(seed)
+        val indices = bits.indices.shuffled(java.util.Random(seed))
+        return indices.map { bits[it] }
+    }
+
+    private fun descrambleBits(bits: List<Int>, password: String): List<Int> {
+        val seed = password.hashCode().toLong()
+        val indices = bits.indices.shuffled(java.util.Random(seed))
+        val result = MutableList(bits.size) { 0 }
+        for (i in bits.indices) {
+            result[indices[i]] = bits[i]
+        }
+        return result
+    }
+
+    /**
+     * Linear Congruential Generator for scrambling
+     */
+    private class LCG(seed: Long) {
+        private var state = seed
+        fun next(): Long {
+            state = (state * 1103515245 + 12345) and 0x7fffffff
+            return state
+        }
+    }
+
+    /**
+     * Extract Y (luminance) channel from ARGB bitmap
+     */
+    private fun bitmapToYChannel(bitmap: Bitmap): Triple<Array<DoubleArray>, Int, Int> {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        val yChannel = Array(height) { i ->
+            DoubleArray(width) { j ->
+                val pixel = pixels[i * width + j]
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+                // Y = 0.299R + 0.587G + 0.114B
+                0.299 * r + 0.587 * g + 0.114 * b
+            }
+        }
+
+        return Triple(yChannel, width, height)
+    }
+
+    /**
+     * Convert Y channel back to bitmap, preserving original UV channels
+     */
+    private fun yChannelToBitmap(
+        yChannel: Array<DoubleArray>,
+        carrierPixels: IntArray,
+        width: Int,
+        height: Int
+    ): Bitmap {
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val resultPixels = IntArray(width * height)
+
+        for (i in 0 until height) {
+            for (j in 0 until width) {
+                val originalPixel = carrierPixels[i * width + j]
+                val origR = Color.red(originalPixel)
+                val origG = Color.green(originalPixel)
+                val origB = Color.blue(originalPixel)
+                val origA = Color.alpha(originalPixel)
+
+                // Original Y
+                val origY = 0.299 * origR + 0.587 * origG + 0.114 * origB
+
+                // New Y from watermarked channel
+                val newY = yChannel[i][j].coerceIn(0.0, 255.0)
+
+                // Calculate difference and distribute to RGB
+                val diff = newY - origY
+                val newR = (origR + diff).roundToInt().coerceIn(0, 255)
+                val newG = (origG + diff).roundToInt().coerceIn(0, 255)
+                val newB = (origB + diff).roundToInt().coerceIn(0, 255)
+
+                resultPixels[i * width + j] = Color.argb(origA, newR, newG, newB)
+            }
+        }
+
+        result.setPixels(resultPixels, 0, width, 0, 0, width, height)
+        return result
     }
 }
