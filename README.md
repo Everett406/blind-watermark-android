@@ -43,10 +43,10 @@ app/src/main/java/com/everett/blindwatermark/
 ## 构建
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
 ## 版本
 
-- 版本号：1.0.0
-- 版本代码：1
+- 版本号：1.0.1
+- 版本代码：2
