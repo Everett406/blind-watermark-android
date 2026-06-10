@@ -62,7 +62,7 @@ fun EmbedScreen(
             )
         ) {
             val bitmap = uiState.selectedBitmap
-            if (bitmap != null) {
+            if (bitmap != null && !bitmap.isRecycled) {
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "选中的图片",

@@ -48,7 +48,13 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
         val bitmap = currentState.selectedBitmap ?: return
 
         viewModelScope.launch {
-            _uiState.value = currentState.copy(isProcessing = true, errorMessage = null, extractedText = null)
+            // Clear UI bitmap reference BEFORE processing
+            _uiState.value = currentState.copy(
+                selectedBitmap = null,
+                isProcessing = true,
+                errorMessage = null,
+                extractedText = null
+            )
 
             try {
                 val password = currentState.password.takeIf { it.isNotBlank() } ?: ""
@@ -58,7 +64,12 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
                     WatermarkEngine.extract(bitmap, password)
                 }
 
-                _uiState.value = currentState.copy(
+                // Now safe to recycle the original bitmap
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+
+                _uiState.value = _uiState.value.copy(
                     isProcessing = false,
                     extractedText = extracted,
                     isSuccess = extracted != null,
@@ -66,7 +77,7 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
                 )
             } catch (e: Throwable) {
                 Log.e("ExtractViewModel", "提取失败", e)
-                _uiState.value = currentState.copy(
+                _uiState.value = _uiState.value.copy(
                     isProcessing = false,
                     errorMessage = "提取失败: ${e.message}"
                 )

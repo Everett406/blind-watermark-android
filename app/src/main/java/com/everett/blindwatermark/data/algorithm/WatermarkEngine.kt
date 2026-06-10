@@ -46,10 +46,8 @@ object WatermarkEngine {
         }
         Log.d("WatermarkEngine", "Y通道转换完成，尺寸: ${width}x${height}")
 
-        // Release the carrier bitmap as soon as possible to free memory
-        if (!carrier.isRecycled) {
-            carrier.recycle()
-        }
+        // Note: Caller is responsible for recycling the carrier bitmap
+        // We don't recycle here to avoid use-after-free in Compose UI
 
         // Ensure dimensions are even for wavelet transform
         val paddedWidth = if (width % 2 == 0) width else width + 1

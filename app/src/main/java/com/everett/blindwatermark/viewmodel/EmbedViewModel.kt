@@ -55,24 +55,29 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
         if (text.isEmpty()) return
 
         viewModelScope.launch {
-            _uiState.value = currentState.copy(isProcessing = true, errorMessage = null)
+            // Clear UI bitmap reference BEFORE processing to prevent Compose from
+            // accessing a recycled bitmap during algorithm execution
+            _uiState.value = currentState.copy(
+                selectedBitmap = null,
+                isProcessing = true,
+                errorMessage = null
+            )
 
             try {
                 val password = currentState.password.takeIf { it.isNotBlank() } ?: ""
 
                 // Move heavy computation to background thread
-                // Note: WatermarkEngine.embed will recycle the input bitmap internally
                 val watermarked = withContext(Dispatchers.Default) {
                     WatermarkEngine.embed(bitmap, text, password)
                 }
 
+                // Now safe to recycle the original bitmap
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+
                 val fileName = "yinyin_embedded_${System.currentTimeMillis()}.png"
                 val saved = ImageSaver.saveToGallery(context, watermarked, fileName)
-
-                // Clear the original bitmap reference since it's been recycled
-                _uiState.value = _uiState.value.copy(
-                    selectedBitmap = null
-                )
 
                 _uiState.value = _uiState.value.copy(
                     isProcessing = false,
@@ -82,7 +87,7 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
                 )
             } catch (e: Throwable) {
                 Log.e("EmbedViewModel", "嵌入失败", e)
-                _uiState.value = currentState.copy(
+                _uiState.value = _uiState.value.copy(
                     isProcessing = false,
                     errorMessage = "嵌入失败: ${e.message}"
                 )
