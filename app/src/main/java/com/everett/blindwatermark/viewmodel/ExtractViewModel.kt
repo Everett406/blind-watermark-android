@@ -64,7 +64,7 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
                     isSuccess = extracted != null,
                     errorMessage = if (extracted == null) "未检测到水印或密码错误" else null
                 )
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e("ExtractViewModel", "提取失败", e)
                 _uiState.value = currentState.copy(
                     isProcessing = false,

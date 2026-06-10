@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -45,7 +46,7 @@ fun rememberImagePicker(onImagePicked: (Bitmap) -> Unit): ImagePicker {
 
 /**
  * Load bitmap from URI with size limiting to prevent OOM
- * Max dimension: 2048px (sufficient for watermarking)
+ * Max dimension: 1024px (sufficient for watermarking, prevents OOM)
  */
 fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? {
     return try {
@@ -59,30 +60,36 @@ fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? {
             BitmapFactory.decodeStream(stream, null, options)
         }
 
-        val maxDimension = 2048
+        val maxDimension = 1024
         val scale = calculateInSampleSize(options, maxDimension, maxDimension)
 
         // Decode with scaling
         val decodeOptions = BitmapFactory.Options().apply {
             inSampleSize = scale
+            // Prefer RGB_565 to save memory (no alpha needed for watermarking)
+            inPreferredConfig = Bitmap.Config.RGB_565
         }
         contentResolver.openInputStream(uri)?.use { stream ->
             BitmapFactory.decodeStream(stream, null, decodeOptions)
         }
-    } catch (_: Exception) {
+    } catch (e: Throwable) {
+        Log.e("ImagePicker", "加载图片失败", e)
         null
     }
 }
 
 private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-    val (height: Int, width: Int) = options.outHeight to options.outWidth
+    val height = options.outHeight
+    val width = options.outWidth
     var inSampleSize = 1
 
     if (height > reqHeight || width > reqWidth) {
         val halfHeight = height / 2
         val halfWidth = width / 2
 
-        while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+        // Calculate the largest inSampleSize value that is a power of 2 and keeps
+        // both height and width larger than the requested height and width.
+        while (halfHeight / inSampleSize >= reqHeight || halfWidth / inSampleSize >= reqWidth) {
             inSampleSize *= 2
         }
     }

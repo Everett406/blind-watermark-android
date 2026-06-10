@@ -28,9 +28,28 @@ object WatermarkEngine {
         val watermarkBits = textToBits(watermark)
         Log.d("WatermarkEngine", "水印比特数: ${watermarkBits.size}")
 
+        // Extract pixel data from carrier first, then we can recycle it
+        val width = carrier.width
+        val height = carrier.height
+        val carrierPixels = IntArray(width * height)
+        carrier.getPixels(carrierPixels, 0, width, 0, 0, width, height)
+
         // Convert bitmap to Y channel (luminance)
-        val (yChannel, width, height) = bitmapToYChannel(carrier)
+        val yChannel = Array(height) { i ->
+            DoubleArray(width) { j ->
+                val pixel = carrierPixels[i * width + j]
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+                0.299 * r + 0.587 * g + 0.114 * b
+            }
+        }
         Log.d("WatermarkEngine", "Y通道转换完成，尺寸: ${width}x${height}")
+
+        // Release the carrier bitmap as soon as possible to free memory
+        if (!carrier.isRecycled) {
+            carrier.recycle()
+        }
 
         // Ensure dimensions are even for wavelet transform
         val paddedWidth = if (width % 2 == 0) width else width + 1
@@ -47,10 +66,16 @@ object WatermarkEngine {
         val ll = waveletResult.ll
         Log.d("WatermarkEngine", "小波变换完成，LL子带尺寸: ${ll.size}x${ll[0].size}")
 
+        // Free padded array
+        padded.forEach { it.fill(0.0) }
+
         // Embed watermark into LL sub-band using DCT-SVD
         Log.d("WatermarkEngine", "开始嵌入水印到LL子带")
         val watermarkedLL = embedIntoLL(ll, watermarkBits, password)
         Log.d("WatermarkEngine", "水印嵌入完成")
+
+        // Free original LL
+        ll.forEach { it.fill(0.0) }
 
         // Inverse wavelet transform
         Log.d("WatermarkEngine", "开始逆小波变换")
@@ -64,9 +89,9 @@ object WatermarkEngine {
         )
         Log.d("WatermarkEngine", "逆小波变换完成")
 
-        // Convert back to bitmap
+        // Convert back to bitmap using cached pixel data
         Log.d("WatermarkEngine", "转换回Bitmap")
-        return yChannelToBitmap(inverseResult, carrier, width, height)
+        return yChannelToBitmap(inverseResult, carrierPixels, width, height)
     }
 
     /**
@@ -349,21 +374,16 @@ object WatermarkEngine {
      */
     private fun yChannelToBitmap(
         yChannel: Array<DoubleArray>,
-        original: Bitmap,
-        origWidth: Int,
-        origHeight: Int
+        carrierPixels: IntArray,
+        width: Int,
+        height: Int
     ): Bitmap {
-        val width = original.width
-        val height = original.height
-        val pixels = IntArray(width * height)
-        original.getPixels(pixels, 0, width, 0, 0, width, height)
-
         val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val resultPixels = IntArray(width * height)
 
         for (i in 0 until height) {
             for (j in 0 until width) {
-                val originalPixel = pixels[i * width + j]
+                val originalPixel = carrierPixels[i * width + j]
                 val origR = Color.red(originalPixel)
                 val origG = Color.green(originalPixel)
                 val origB = Color.blue(originalPixel)
@@ -373,11 +393,7 @@ object WatermarkEngine {
                 val origY = 0.299 * origR + 0.587 * origG + 0.114 * origB
 
                 // New Y from watermarked channel
-                val newY = if (i < origHeight && j < origWidth) {
-                    yChannel[i][j].coerceIn(0.0, 255.0)
-                } else {
-                    origY
-                }
+                val newY = yChannel[i][j].coerceIn(0.0, 255.0)
 
                 // Calculate difference and distribute to RGB
                 val diff = newY - origY

@@ -61,6 +61,7 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
                 val password = currentState.password.takeIf { it.isNotBlank() } ?: ""
 
                 // Move heavy computation to background thread
+                // Note: WatermarkEngine.embed will recycle the input bitmap internally
                 val watermarked = withContext(Dispatchers.Default) {
                     WatermarkEngine.embed(bitmap, text, password)
                 }
@@ -68,13 +69,18 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
                 val fileName = "yinyin_embedded_${System.currentTimeMillis()}.png"
                 val saved = ImageSaver.saveToGallery(context, watermarked, fileName)
 
-                _uiState.value = currentState.copy(
+                // Clear the original bitmap reference since it's been recycled
+                _uiState.value = _uiState.value.copy(
+                    selectedBitmap = null
+                )
+
+                _uiState.value = _uiState.value.copy(
                     isProcessing = false,
                     resultBitmap = watermarked,
                     isSuccess = saved,
                     errorMessage = if (!saved) "水印已生成但保存失败" else null
                 )
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e("EmbedViewModel", "嵌入失败", e)
                 _uiState.value = currentState.copy(
                     isProcessing = false,
