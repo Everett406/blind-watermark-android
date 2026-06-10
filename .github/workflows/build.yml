@@ -25,11 +25,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Release APK
-        run: ./gradlew assembleRelease
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
 
-      - name: Find and list APK files
-        run: find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
+      - name: List APK files
+        run: ls -laR app/build/outputs/
 
       - name: Sleep for verification
         run: sleep 30
@@ -40,7 +40,11 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           echo "Tag: $TAG"
-          gh release upload "$TAG" $(find . -name "*.apk" -type f) --clobber 2>/dev/null || {
-            echo "Upload failed, creating release first"
-            gh release create "$TAG" $(find . -name "*.apk" -type f) --title "Release $TAG" --generate-notes
-          }
+          APK_PATH=$(find app/build/outputs -name "*.apk" -type f | head -1)
+          echo "APK: $APK_PATH"
+          if [ -n "$APK_PATH" ]; then
+            gh release create "$TAG" "$APK_PATH" --title "Release $TAG" --generate-notes
+          else
+            echo "ERROR: No APK found"
+            exit 1
+          fi
