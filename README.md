@@ -1,32 +1,52 @@
-# 隐印 (Blind Watermark)
+# 隐印 - Blind Watermark
 
-> 给图片嵌入隐形水印，保护你的图片版权
-
-基于 DWT-DCT-SVD 算法，支持文本、图片、比特数组三种水印模式。嵌入的水印肉眼不可见，提取时无需原图。
+一款基于 Android 的盲水印工具应用，使用 Kotlin + Jetpack Compose 构建。
 
 ## 功能
 
-- **嵌入水印** — 将文本、图片或比特数组嵌入到图片中
-- **提取水印** — 从带水印的图片中提取隐藏信息
-- **批量处理** — 批量为多张图片嵌入统一水印
-- **密码保护** — 可选密码加密，双重保护
-- **历史记录** — 保存操作历史，方便回看
+- **嵌入水印**：将不可见的文本水印嵌入到图片中
+- **提取水印**：从带水印的图片中提取隐藏的文本信息
+- **密码保护**：可选密码加密，增强水印安全性
 
 ## 技术栈
 
-- Kotlin + Jetpack Compose
-- MVVM + Hilt + Room
-- OpenCV Android SDK
-- 自写 Haar 小波变换
+- **语言**：Kotlin
+- **UI 框架**：Jetpack Compose + Material 3
+- **依赖注入**：Hilt
+- **导航**：Navigation Compose
+- **图像处理**：OpenCV
+- **本地存储**：Room + DataStore
+- **构建工具**：Gradle (Kotlin DSL)
 
-## 设计文档
+## 系统要求
 
-详见 [DESIGN_SPEC.md](DESIGN_SPEC.md)
+- Android 8.0 (API 26) 及以上
+- 目标 SDK 34
 
-## 开源参考
+## 项目结构
 
-- [guofei9987/blind_watermark](https://github.com/guofei9987/blind_watermark) — 原始 Python 盲水印库
+```
+app/src/main/java/com/everett/blindwatermark/
+├── BlindWatermarkApp.kt    # Application 类
+├── MainActivity.kt         # 主 Activity
+├── AppNavigation.kt        # 导航图
+└── ui/
+    ├── theme/
+    │   ├── Color.kt         # 颜色定义
+    │   └── Theme.kt         # 主题配置
+    └── screens/
+        ├── MainScreen.kt    # 主页面（Tab 切换）
+        ├── EmbedScreen.kt   # 嵌入水印页面
+        └── ExtractScreen.kt  # 提取水印页面
+```
 
-## License
+## 构建
 
-MIT
+```bash
+./gradlew assembleDebug
+```
+
+## 版本
+
+- 版本号：1.0.0
+- 版本代码：1
