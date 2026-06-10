@@ -3,16 +3,23 @@ package com.everett.blindwatermark.data.algorithm
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.util.Log
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
  * Blind Watermark Engine
- * DWT-DCT based blind watermarking (without SVD for simplicity and robustness)
+ * DWT-DCT based blind watermarking
+ *
+ * 嵌入策略：在 DCT 系数上使用相对大小编码
+ * - 每个 bit 使用两个 DCT 系数 (0,1) 和 (1,0)
+ * - bit=1: |coeff(0,1)| > |coeff(1,0)| + ALPHA
+ * - bit=0: |coeff(1,0)| > |coeff(0,1)| + ALPHA
+ * - 这样编码不依赖绝对值，对压缩/滤波更鲁棒
  */
 object WatermarkEngine {
 
     private const val BLOCK_SIZE = 8
-    private const val ALPHA = 5.0 // Embedding strength for DCT coefficients
+    private const val ALPHA = 15.0 // 嵌入强度，两个系数的最小差距
 
     /**
      * Embed text watermark into a bitmap image
@@ -37,8 +44,6 @@ object WatermarkEngine {
         }
 
         // Pad dimensions so that after DWT, LL sub-band is divisible by BLOCK_SIZE
-        // DWT halves dimensions, so we need: padded / 2 % BLOCK_SIZE == 0
-        // => padded % (2 * BLOCK_SIZE) == 0
         val targetMultiple = 2 * BLOCK_SIZE // 16
         val paddedWidth = ((width + targetMultiple - 1) / targetMultiple) * targetMultiple
         val paddedHeight = ((height + targetMultiple - 1) / targetMultiple) * targetMultiple
@@ -96,8 +101,8 @@ object WatermarkEngine {
     }
 
     /**
-     * Embed watermark bits into LL sub-band using DCT coefficient modification
-     * We embed into the (1,1) DCT coefficient (low frequency) of each block
+     * Embed watermark bits into LL sub-band using DCT coefficient pair encoding
+     * Each bit is encoded into the relative magnitude of two DCT coefficients
      */
     private fun embedIntoLL(
         ll: Array<DoubleArray>,
@@ -134,21 +139,34 @@ object WatermarkEngine {
                 // DCT
                 val dctBlock = DCT.dct2(block)
 
-                // Embed bit into DCT(1,1) coefficient (second low-freq component)
-                // This is more robust than DC component (0,0)
+                // Embed bit using coefficient pair (0,1) and (1,0)
                 val bit = scrambledBits[bitIndex]
-                val originalCoeff = dctBlock[1][1]
+                val c01 = dctBlock[0][1] // horizontal frequency
+                val c10 = dctBlock[1][0] // vertical frequency
 
-                // Quantization-based embedding:
-                // For bit=1: round to nearest odd multiple of ALPHA
-                // For bit=0: round to nearest even multiple of ALPHA
-                val quantized = kotlin.math.round(originalCoeff / ALPHA).toInt()
-                val newQuantized = if (bit == 1) {
-                    if (quantized % 2 == 0) quantized + 1 else quantized
+                // Ensure the desired relationship holds with margin ALPHA
+                if (bit == 1) {
+                    // Want: |c01| > |c10| + ALPHA
+                    if (abs(c01) <= abs(c10) + ALPHA) {
+                        // Need to increase |c01| or decrease |c10|
+                        val target = abs(c10) + ALPHA + 5.0
+                        if (c01 >= 0) {
+                            dctBlock[0][1] = target
+                        } else {
+                            dctBlock[0][1] = -target
+                        }
+                    }
                 } else {
-                    if (quantized % 2 == 1) quantized + 1 else quantized
+                    // Want: |c10| > |c01| + ALPHA
+                    if (abs(c10) <= abs(c01) + ALPHA) {
+                        val target = abs(c01) + ALPHA + 5.0
+                        if (c10 >= 0) {
+                            dctBlock[1][0] = target
+                        } else {
+                            dctBlock[1][0] = -target
+                        }
+                    }
                 }
-                dctBlock[1][1] = newQuantized * ALPHA.toDouble()
 
                 bitIndex++
 
@@ -199,11 +217,11 @@ object WatermarkEngine {
                 }
 
                 val dctBlock = DCT.dct2(block)
-                val coeff = dctBlock[1][1]
+                val c01 = dctBlock[0][1]
+                val c10 = dctBlock[1][0]
 
-                // Extract bit from parity of quantized coefficient
-                val quantized = kotlin.math.round(coeff / ALPHA).toInt()
-                val bit = kotlin.math.abs(quantized) % 2
+                // Decode bit from relative magnitude
+                val bit = if (abs(c01) > abs(c10)) 1 else 0
 
                 extractedBits.add(bit)
             } catch (e: Exception) {

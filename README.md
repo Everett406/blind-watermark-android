@@ -48,5 +48,5 @@ app/src/main/java/com/everett/blindwatermark/
 
 ## 版本
 
-- 版本号：1.2.1
-- 版本代码：13
+- 版本号：1.2.2
+- 版本代码：14
