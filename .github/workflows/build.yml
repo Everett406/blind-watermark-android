@@ -28,16 +28,16 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      - name: List APK files
-        run: find app/build/outputs -name "*.apk" -type f
+      - name: List build outputs
+        run: ls -laR app/build/outputs/apk/ || echo "No outputs found"
 
       - name: Sleep for verification
         run: sleep 30
 
-      - name: Create GitHub Release
+      - name: Upload APK to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: app/build/outputs/apk/release/app-release.apk
+          files: app/build/outputs/apk/**/*.apk
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
