@@ -120,6 +120,11 @@ object SVD {
             val c = cos(phi)
             val s_val = sin(phi)
 
+            // Guard against NaN/Inf in trig functions
+            if (c.isNaN() || c.isInfinite() || s_val.isNaN() || s_val.isInfinite()) {
+                break
+            }
+
             // Update A
             val app = a[p][p]
             val aqq = a[q][q]

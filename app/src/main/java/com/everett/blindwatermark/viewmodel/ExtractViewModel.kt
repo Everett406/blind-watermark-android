@@ -3,14 +3,17 @@ package com.everett.blindwatermark.viewmodel
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.everett.blindwatermark.data.algorithm.WatermarkEngine
 import com.everett.blindwatermark.utils.loadBitmapFromUri
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -49,7 +52,11 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
 
             try {
                 val password = currentState.password.takeIf { it.isNotBlank() } ?: ""
-                val extracted = WatermarkEngine.extract(bitmap, password)
+
+                // Move heavy computation to background thread
+                val extracted = withContext(Dispatchers.Default) {
+                    WatermarkEngine.extract(bitmap, password)
+                }
 
                 _uiState.value = currentState.copy(
                     isProcessing = false,
@@ -58,6 +65,7 @@ class ExtractViewModel @Inject constructor() : ViewModel() {
                     errorMessage = if (extracted == null) "未检测到水印或密码错误" else null
                 )
             } catch (e: Exception) {
+                Log.e("ExtractViewModel", "提取失败", e)
                 _uiState.value = currentState.copy(
                     isProcessing = false,
                     errorMessage = "提取失败: ${e.message}"

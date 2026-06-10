@@ -2,6 +2,7 @@ package com.everett.blindwatermark.data.algorithm
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.util.Log
 import kotlin.math.roundToInt
 
 /**
@@ -21,11 +22,15 @@ object WatermarkEngine {
      * @return Watermarked bitmap
      */
     fun embed(carrier: Bitmap, watermark: String, password: String = ""): Bitmap {
+        Log.d("WatermarkEngine", "开始嵌入水印，图片尺寸: ${carrier.width}x${carrier.height}, 水印长度: ${watermark.length}")
+
         // Convert watermark text to binary sequence
         val watermarkBits = textToBits(watermark)
+        Log.d("WatermarkEngine", "水印比特数: ${watermarkBits.size}")
 
         // Convert bitmap to Y channel (luminance)
         val (yChannel, width, height) = bitmapToYChannel(carrier)
+        Log.d("WatermarkEngine", "Y通道转换完成，尺寸: ${width}x${height}")
 
         // Ensure dimensions are even for wavelet transform
         val paddedWidth = if (width % 2 == 0) width else width + 1
@@ -37,13 +42,18 @@ object WatermarkEngine {
         }
 
         // 1-level Haar DWT
+        Log.d("WatermarkEngine", "开始小波变换")
         val waveletResult = HaarWavelet.transform(padded)
         val ll = waveletResult.ll
+        Log.d("WatermarkEngine", "小波变换完成，LL子带尺寸: ${ll.size}x${ll[0].size}")
 
         // Embed watermark into LL sub-band using DCT-SVD
+        Log.d("WatermarkEngine", "开始嵌入水印到LL子带")
         val watermarkedLL = embedIntoLL(ll, watermarkBits, password)
+        Log.d("WatermarkEngine", "水印嵌入完成")
 
         // Inverse wavelet transform
+        Log.d("WatermarkEngine", "开始逆小波变换")
         val inverseResult = HaarWavelet.inverse(
             HaarWavelet.WaveletResult(
                 watermarkedLL,
@@ -52,8 +62,10 @@ object WatermarkEngine {
                 waveletResult.hh
             )
         )
+        Log.d("WatermarkEngine", "逆小波变换完成")
 
         // Convert back to bitmap
+        Log.d("WatermarkEngine", "转换回Bitmap")
         return yChannelToBitmap(inverseResult, carrier, width, height)
     }
 
@@ -107,6 +119,8 @@ object WatermarkEngine {
         val blocksW = width / BLOCK_SIZE
         val totalBlocks = blocksH * blocksW
 
+        Log.d("WatermarkEngine", "嵌入块信息: blocksH=$blocksH, blocksW=$blocksW, totalBlocks=$totalBlocks, bits=${scrambledBits.size}")
+
         var bitIndex = 0
         for (blockIdx in 0 until minOf(totalBlocks, scrambledBits.size)) {
             val bh = blockIdx / blocksW
@@ -114,43 +128,55 @@ object WatermarkEngine {
 
             if (bh >= blocksH || bw >= blocksW) break
 
-            // Extract block
-            val block = Array(BLOCK_SIZE) { i ->
-                DoubleArray(BLOCK_SIZE) { j ->
-                    result[bh * BLOCK_SIZE + i][bw * BLOCK_SIZE + j]
+            try {
+                // Extract block
+                val block = Array(BLOCK_SIZE) { i ->
+                    DoubleArray(BLOCK_SIZE) { j ->
+                        result[bh * BLOCK_SIZE + i][bw * BLOCK_SIZE + j]
+                    }
                 }
-            }
 
-            // DCT
-            val dctBlock = DCT.dct2(block)
+                // DCT
+                val dctBlock = DCT.dct2(block)
 
-            // SVD on DCT coefficients
-            val svd = SVD.decompose(dctBlock)
+                // SVD on DCT coefficients
+                val svd = SVD.decompose(dctBlock)
 
-            // Modify largest singular value based on watermark bit
-            if (bitIndex < scrambledBits.size) {
-                val bit = scrambledBits[bitIndex]
-                val modifiedS0 = if (bit == 1) {
-                    svd.s[0] + ALPHA * svd.s[0]
-                } else {
-                    svd.s[0] - ALPHA * svd.s[0]
+                // Check for invalid singular values
+                if (svd.s[0].isNaN() || svd.s[0].isInfinite() || svd.s[0] == 0.0) {
+                    Log.w("WatermarkEngine", "块($bh,$bw)的奇异值异常: ${svd.s[0]}，跳过")
+                    continue
                 }
-                svd.s[0] = modifiedS0
-                bitIndex++
-            }
 
-            // Reconstruct block
-            val modifiedBlock = SVD.reconstruct(svd.u, svd.s, svd.vt)
-            val idctBlock = DCT.idct2(modifiedBlock)
-
-            // Put block back
-            for (i in 0 until BLOCK_SIZE) {
-                for (j in 0 until BLOCK_SIZE) {
-                    result[bh * BLOCK_SIZE + i][bw * BLOCK_SIZE + j] = idctBlock[i][j]
+                // Modify largest singular value based on watermark bit
+                if (bitIndex < scrambledBits.size) {
+                    val bit = scrambledBits[bitIndex]
+                    val modifiedS0 = if (bit == 1) {
+                        svd.s[0] * (1.0 + ALPHA)
+                    } else {
+                        svd.s[0] * (1.0 - ALPHA)
+                    }
+                    svd.s[0] = modifiedS0
+                    bitIndex++
                 }
+
+                // Reconstruct block
+                val modifiedBlock = SVD.reconstruct(svd.u, svd.s, svd.vt)
+                val idctBlock = DCT.idct2(modifiedBlock)
+
+                // Put block back
+                for (i in 0 until BLOCK_SIZE) {
+                    for (j in 0 until BLOCK_SIZE) {
+                        result[bh * BLOCK_SIZE + i][bw * BLOCK_SIZE + j] = idctBlock[i][j]
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("WatermarkEngine", "处理块($bh,$bw)时出错: ${e.message}")
+                // 跳过这个块，继续处理下一个
             }
         }
 
+        Log.d("WatermarkEngine", "嵌入完成，处理了 $bitIndex 个比特")
         return result
     }
 

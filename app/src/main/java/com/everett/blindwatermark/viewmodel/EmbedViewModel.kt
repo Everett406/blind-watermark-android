@@ -3,6 +3,7 @@ package com.everett.blindwatermark.viewmodel
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.everett.blindwatermark.data.algorithm.WatermarkEngine
@@ -74,6 +75,7 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
                     errorMessage = if (!saved) "水印已生成但保存失败" else null
                 )
             } catch (e: Exception) {
+                Log.e("EmbedViewModel", "嵌入失败", e)
                 _uiState.value = currentState.copy(
                     isProcessing = false,
                     errorMessage = "嵌入失败: ${e.message}"
