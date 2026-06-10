@@ -3,6 +3,9 @@ package com.everett.blindwatermark.data.algorithm
 import kotlin.math.abs
 import kotlin.math.sqrt
 import kotlin.math.sign
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.atan2
 
 /**
  * Singular Value Decomposition (SVD)
@@ -112,18 +115,18 @@ object SVD {
             val phi = if (abs(diff) < epsilon) {
                 Math.PI / 4
             } else {
-                0.5 * kotlin.math.atan2(2 * a[p][q], diff)
+                0.5 * atan2(2.0 * a[p][q], diff)
             }
             val c = cos(phi)
-            val s_val = kotlin.math.sin(phi)
+            val s_val = sin(phi)
 
             // Update A
             val app = a[p][p]
             val aqq = a[q][q]
             val apq = a[p][q]
 
-            a[p][p] = c * c * app - 2 * c * s_val * apq + s_val * s_val * aqq
-            a[q][q] = s_val * s_val * app + 2 * c * s_val * apq + c * c * aqq
+            a[p][p] = c * c * app - 2.0 * c * s_val * apq + s_val * s_val * aqq
+            a[q][q] = s_val * s_val * app + 2.0 * c * s_val * apq + c * c * aqq
             a[p][q] = 0.0
             a[q][p] = 0.0
 
