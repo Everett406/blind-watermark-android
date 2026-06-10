@@ -158,7 +158,7 @@ fun EmbedScreen(
 
         // Embed Button
         Button(
-            onClick = { viewModel.embedWatermark(context) },
+            onClick = { viewModel.embedWatermark() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
@@ -182,8 +182,9 @@ fun EmbedScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Result
-        if (uiState.isSuccess && uiState.resultBitmap != null) {
+        // Result Preview
+        val resultBitmap = uiState.resultBitmap
+        if (resultBitmap != null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -201,12 +202,26 @@ fun EmbedScreen(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "已保存到相册",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Preview image
+                    Image(
+                        bitmap = resultBitmap.asImageBitmap(),
+                        contentDescription = "带水印的图片",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Save button
+                    Button(
+                        onClick = { viewModel.saveResultToGallery(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("保存到相册", fontSize = 15.sp)
+                    }
                 }
             }
         }

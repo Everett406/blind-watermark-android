@@ -40,25 +40,22 @@ jobs:
             echo "No SIGNING_KEY_BASE64 secret found, will use debug signing"
           fi
 
-      - name: Build Release APK
+      - name: Build APK
         env:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_ALIAS_PASSWORD: ${{ secrets.SIGNING_KEY_ALIAS_PASSWORD }}
         run: |
           if [ -f app/keystore.jks ] && [ -n "$SIGNING_KEY_PASSWORD" ]; then
-            ./gradlew assembleRelease
+            ./gradlew assembleRelease 2>&1
           else
-            ./gradlew assembleDebug
+            ./gradlew assembleDebug 2>&1
           fi
 
       - name: List build outputs
         run: ls -laR app/build/outputs/ 2>/dev/null || echo "No outputs directory"
 
-      - name: Sleep for verification
-        run: sleep 30
-
-      - name: Upload APK using gh CLI
+      - name: Upload APK to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -66,9 +63,10 @@ jobs:
           echo "Tag: $TAG"
           APK_PATH=$(find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -1)
           echo "APK: $APK_PATH"
-          if [ -n "$APK_PATH" ]; then
-            gh release create "$TAG" "$APK_PATH" --title "Release $TAG" --generate-notes
-          else
+          if [ -z "$APK_PATH" ]; then
             echo "ERROR: No APK found"
             exit 1
           fi
+          # Delete existing release if it exists, then create new one
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" "$APK_PATH" --title "Release $TAG" --generate-notes

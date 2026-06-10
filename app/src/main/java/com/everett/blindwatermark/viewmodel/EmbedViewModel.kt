@@ -48,7 +48,7 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
         _uiState.value = _uiState.value.copy(password = password)
     }
 
-    fun embedWatermark(context: Context) {
+    fun embedWatermark() {
         val currentState = _uiState.value
         val bitmap = currentState.selectedBitmap ?: return
         val text = currentState.watermarkText.trim()
@@ -76,14 +76,11 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
                     bitmap.recycle()
                 }
 
-                val fileName = "yinyin_embedded_${System.currentTimeMillis()}.png"
-                val saved = ImageSaver.saveToGallery(context, watermarked, fileName)
-
                 _uiState.value = _uiState.value.copy(
                     isProcessing = false,
                     resultBitmap = watermarked,
-                    isSuccess = saved,
-                    errorMessage = if (!saved) "水印已生成但保存失败" else null
+                    isSuccess = true,
+                    errorMessage = null
                 )
             } catch (e: Throwable) {
                 Log.e("EmbedViewModel", "嵌入失败", e)
@@ -92,6 +89,20 @@ class EmbedViewModel @Inject constructor() : ViewModel() {
                     errorMessage = "嵌入失败: ${e.message}"
                 )
             }
+        }
+    }
+
+    fun saveResultToGallery(context: Context) {
+        val currentState = _uiState.value
+        val resultBitmap = currentState.resultBitmap ?: return
+
+        viewModelScope.launch {
+            val fileName = "yinyin_embedded_${System.currentTimeMillis()}.png"
+            val saved = ImageSaver.saveToGallery(context, resultBitmap, fileName)
+            _uiState.value = currentState.copy(
+                isSuccess = saved,
+                errorMessage = if (!saved) "保存到相册失败" else null
+            )
         }
     }
 

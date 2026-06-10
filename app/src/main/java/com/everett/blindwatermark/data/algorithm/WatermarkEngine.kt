@@ -172,14 +172,20 @@ object WatermarkEngine {
                 }
 
                 // Modify largest singular value based on watermark bit
+                // Use quantization: encode bit into whether s0 is above/below threshold
+                // This is more robust than simple scaling
                 if (bitIndex < scrambledBits.size) {
                     val bit = scrambledBits[bitIndex]
-                    val modifiedS0 = if (bit == 1) {
-                        svd.s[0] * (1.0 + ALPHA)
+                    val baseS0 = svd.s[0]
+                    // Quantization step based on average singular value magnitude
+                    val step = baseS0 * ALPHA
+                    // Round to nearest step, then add offset based on bit
+                    val quantized = kotlin.math.floor(baseS0 / step) * step
+                    svd.s[0] = if (bit == 1) {
+                        quantized + step * 0.75 // clearly above midpoint
                     } else {
-                        svd.s[0] * (1.0 - ALPHA)
+                        quantized + step * 0.25 // clearly below midpoint
                     }
-                    svd.s[0] = modifiedS0
                     bitIndex++
                 }
 
@@ -240,13 +246,15 @@ object WatermarkEngine {
             // SVD
             val svd = SVD.decompose(dctBlock)
 
-            // Determine bit based on the pattern of singular values
-            // If the largest singular value is relatively large, it's likely bit=1
+            // Determine bit based on quantization
+            // Check if s0 is closer to step*0.75 (bit=1) or step*0.25 (bit=0)
             val s0 = svd.s[0]
-            val s1 = if (svd.s.size > 1) svd.s[1] else 0.0
+            val step = s0 * ALPHA
+            val quantized = kotlin.math.floor(s0 / step) * step
+            val remainder = s0 - quantized
+            val midpoint = step * 0.5
 
-            // Use ratio as indicator
-            val bit = if (s0 > s1 * (1 + ALPHA * 0.5)) 1 else 0
+            val bit = if (remainder >= midpoint) 1 else 0
             extractedBits.add(bit)
         }
 
