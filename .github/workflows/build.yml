@@ -28,17 +28,19 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      - name: Copy APK to known location
-        run: |
-          mkdir -p apk
-          cp app/build/outputs/apk/release/*.apk apk/ || cp app/build/outputs/apk/debug/*.apk apk/ || echo "No APK found"
-          ls -la apk/
+      - name: Find and list APK files
+        run: find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
 
       - name: Sleep for verification
         run: sleep 30
 
-      - name: Upload APK to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: apk/*
-          generate_release_notes: true
+      - name: Upload APK using gh CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Tag: $TAG"
+          gh release upload "$TAG" $(find . -name "*.apk" -type f) --clobber 2>/dev/null || {
+            echo "Upload failed, creating release first"
+            gh release create "$TAG" $(find . -name "*.apk" -type f) --title "Release $TAG" --generate-notes
+          }
