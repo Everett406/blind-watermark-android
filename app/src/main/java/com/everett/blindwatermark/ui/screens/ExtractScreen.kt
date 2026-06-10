@@ -1,5 +1,9 @@
 package com.everett.blindwatermark.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,18 +16,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.everett.blindwatermark.viewmodel.ExtractViewModel
 
 @Composable
-fun ExtractScreen(navController: NavController) {
-    var selectedImage by remember { mutableStateOf<String?>(null) }
-    var password by remember { mutableStateOf("") }
-    var showPassword by remember { mutableStateOf(false) }
-    var isProcessing by remember { mutableStateOf(false) }
+fun ExtractScreen(
+    navController: NavController,
+    viewModel: ExtractViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.onImageSelected(it, context) }
+    }
 
     Column(
         modifier = Modifier
@@ -35,16 +50,20 @@ fun ExtractScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(200.dp)
-                .clickable { /* TODO: Open image picker */ },
+                .clickable { imagePicker.launch("image/*") },
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
             )
         ) {
-            if (selectedImage != null) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("图片预览", color = MaterialTheme.colorScheme.secondary)
-                }
+            val bitmap = uiState.selectedBitmap
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "选中的图片",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
             } else {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -70,6 +89,7 @@ fun ExtractScreen(navController: NavController) {
         Spacer(modifier = Modifier.height(20.dp))
 
         // Password (collapsible)
+        var showPassword by remember { mutableStateOf(false) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -94,8 +114,8 @@ fun ExtractScreen(navController: NavController) {
         if (showPassword) {
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
+                value = uiState.password,
+                onValueChange = viewModel::onPasswordChanged,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
                 placeholder = { Text("输入密码") },
@@ -108,14 +128,14 @@ fun ExtractScreen(navController: NavController) {
 
         // Extract Button
         Button(
-            onClick = { /* TODO: Extract watermark */ },
+            onClick = { viewModel.extractWatermark() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
             shape = RoundedCornerShape(12.dp),
-            enabled = selectedImage != null && !isProcessing
+            enabled = uiState.selectedBitmap != null && !uiState.isProcessing
         ) {
-            if (isProcessing) {
+            if (uiState.isProcessing) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),
                     color = MaterialTheme.colorScheme.onPrimary,
@@ -125,6 +145,70 @@ fun ExtractScreen(navController: NavController) {
                 Text("提取中...", fontSize = 16.sp)
             } else {
                 Text("开始提取", fontSize = 16.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Result
+        if (uiState.isSuccess && uiState.extractedText != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "提取成功",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "水印内容：",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
+                    ) {
+                        Text(
+                            text = uiState.extractedText!!,
+                            modifier = Modifier.padding(12.dp),
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+
+        // Error
+        uiState.errorMessage?.let { error ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Text(
+                    text = error,
+                    modifier = Modifier.padding(12.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontSize = 14.sp
+                )
             }
         }
 
