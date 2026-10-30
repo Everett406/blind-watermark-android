@@ -1,9 +1,9 @@
----
 
 > [!NOTE]
 > **本仓库已迁移至 Gitee**：<https://gitee.com/Everett5678/blind-watermark-android>
 > GitHub 端仅作只读归档，新代码请推送到 Gitee。
 
+---
 # 隐印 - Blind Watermark
 
 一款基于 Android 的盲水印工具应用，使用 Kotlin + Jetpack Compose 构建。
